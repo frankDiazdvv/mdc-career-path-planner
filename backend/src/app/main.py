@@ -56,18 +56,66 @@ async def invoke_llm(request: Request):
         return {"error": f"Error loading data files: {e}"}
 
     sample_programs = programs[:6]
+    # 🧠 Strict structured system prompt
     context = f"""
     You are ElevatePath, an AI academic advisor for Miami Dade College.
+    Your task is to produce a structured academic plan in JSON format only.
 
-    Provide structured JSON with pathway details. Use realistic data examples.
+    Respond EXACTLY in this JSON format:
+    {{
+    "career_goal": "string",
+    "pathway_data": {{
+        "mdc_phase": {{
+        "degree_name": "string",
+        "courses": [{{"code": "string", "name": "string", "credits": number}}],
+        "duration_semesters": number,
+        "total_cost": number,
+        "total_credits": number
+        }},
+        "fiu_phase": {{
+        "degree_name": "string",
+        "transfer_credits": number,
+        "required_courses": [{{"code": "string", "name": "string", "credits": number}}],
+        "duration_semesters": number,
+        "total_cost": number,
+        "remaining_credits": number
+        }},
+        "advanced_phase": {{
+        "masters": {{
+            "degree_name": "string",
+            "duration_years": number,
+            "total_cost": number,
+            "total_credits": number
+        }},
+        "phd": {{
+            "degree_name": "string",
+            "duration_years": number,
+            "funding_available": boolean
+        }}
+        }},
+        "total_summary": {{
+        "total_years": number,
+        "total_cost": number,
+        "career_outlook": "string"
+        }}
+    }}
+    }}
 
+    Base your recommendations on this data:
     - Career Goals: {[g['name'] for g in goals[:8]]}
     - Programs: {[p['name'] for p in sample_programs]}
-    - Transfer Options: {list(transfer_pathways.get('by_program', {}).keys())[:5]}
-    - Average Cost: {cost_model.get('average_tuition', 'N/A')}
+    - Transfer Pathways: {list(transfer_pathways.get("by_program", {}).keys())[:5]}
+    - Average Cost per Credit: {cost_model.get('average_tuition', 'N/A')}
 
     User input: "{prompt}"
+
+    Rules:
+    - Always output valid JSON matching the schema above.
+    - Do NOT include text outside the JSON.
+    - Populate fields with realistic academic data for Miami Dade College → FIU → Graduate progression.
+    - If unsure, make reasonable academic assumptions instead of saying “I’m not sure yet”.
     """
+
 
     gemini_url = (
         "https://generativelanguage.googleapis.com/v1beta/models/"
