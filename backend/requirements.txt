@@ -1,3 +1,5 @@
 fastapi
-uvicorn[standard]
-python-dotenv
+uvicorn
+requests
+python-multipart
+pandas
