@@ -19,8 +19,10 @@ def ping():
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://mdc-career-path-planner.vercel.app",  # your live frontend
-        "http://localhost:5174",  # local dev if you test locally
+        "https://mdc-career-path-planner.vercel.app",
+        "https://*.vercel.app",  # allow all vercel subdomains
+        "http://localhost:5173",  # your local dev
+        "http://localhost:5174",
     ],
     allow_credentials=True,
     allow_methods=["*"],
