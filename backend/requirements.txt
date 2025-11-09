@@ -1,7 +1,8 @@
+google-generativeai>=0.8.0
+requests
 fastapi
 uvicorn
-requests
-pandas
+pydantic
 python-multipart
 python-dotenv
-google-generativeai
+pandas
