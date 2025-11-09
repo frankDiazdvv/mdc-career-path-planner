@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 # Import your existing route modules
-from backend.src.app.routes import goals, programs, recommendations
+from src.app.routes import goals, programs, recommendations
 
 # Initialize FastAPI app
 app = FastAPI(title="ElevatePath API")
