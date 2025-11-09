@@ -6,8 +6,18 @@ import os
 import requests
 import json
 
+# === FIX: Add project root to path (so backend. imports work) ===
+import sys
+sys.path.append(str(Path(__file__).resolve().parents[2]))  # → /opt/render/project/src
+
+# === Now you can import from backend.src ===
+from backend.src.app.util.files import load_json, load_csv  # This will now work
+
+# === Or use relative import (cleaner) ===
+# from ..util.files import load_json, load_csv
+
+# Import routes
 from src.app.routes import goals, programs, recommendations
-from backend.src.app.util.files import load_json, load_csv
 
 app = FastAPI(title="ElevatePath API")
 
@@ -28,11 +38,12 @@ app.add_middleware(
 def ping():
     return {"message": "pong"}
 
-# Load env + data dir
+# Load env
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-print("GEMINI_API_KEY:", bool(GEMINI_API_KEY))
+print("GEMINI_API_KEY loaded:", bool(GEMINI_API_KEY))
 
-BASE_DIR = Path(__file__).resolve().parents[3]
+# Data directory
+BASE_DIR = Path(__file__).resolve().parents[3]  # → /opt/render/project/src
 DATA_DIR = BASE_DIR / "data" / "seed"
 print("DATA_DIR:", DATA_DIR)
 
@@ -44,7 +55,7 @@ async def invoke_llm(request: Request):
         if not prompt:
             return {"error": "Empty prompt"}
 
-        # Load data
+        # Load data using global DATA_DIR
         goals = load_json(str(DATA_DIR / "career_goals.json"))
         programs = load_csv(str(DATA_DIR / "programs_mdc.csv"))
         cost_model = load_json(str(DATA_DIR / "cost_model.json"))
@@ -54,12 +65,13 @@ async def invoke_llm(request: Request):
 
         context = f"""
         You are ElevatePath, AI advisor for Miami Dade College.
-        Respond in JSON only. Use real data.
+        Respond in valid JSON only.
 
-        Goals: {[g['name'] for g in goals[:8]]}
-        Programs: {[p['name'] for p in sample_programs]}
-        Transfers: {list(transfer_pathways.get("by_program", {}).keys())[:5]}
-        Cost: {cost_model.get('average_tuition', 'N/A')}
+        Use real data:
+        - Goals: {[g['name'] for g in goals[:8]]}
+        - Programs: {[p['name'] for p in sample_programs]}
+        - Transfer: {list(transfer_pathways.get("by_program", {}).keys())[:5]}
+        - Avg cost: {cost_model.get('average_tuition', 'N/A')}
 
         User: "{prompt}"
         """
@@ -70,14 +82,26 @@ async def invoke_llm(request: Request):
             "generationConfig": {"response_mime_type": "application/json"}
         }
 
+        print("Sending to Gemini...")
         r = requests.post(url, json=payload, timeout=30)
-        if r.status_code != 200:
-            return {"error": r.text}
 
-        output = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-        return json.loads(output)
+        if r.status_code != 200:
+            print("Gemini error:", r.text)
+            return {"error": f"Gemini API error: {r.status_code}"}
+
+        result = r.json()
+        output_text = result.get("candidates", [{}])[0] \
+                              .get("content", {}) \
+                              .get("parts", [{}])[0] \
+                              .get("text", "").strip()
+
+        try:
+            return json.loads(output_text)
+        except json.JSONDecodeError as e:
+            return {"output": output_text, "parse_error": str(e)}
 
     except Exception as e:
+        print("invoke_llm error:", e)
         return {"error": str(e)}
 
 # Include routers
