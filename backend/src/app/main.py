@@ -56,52 +56,58 @@ async def invoke_llm(request: Request):
         return {"error": f"Error loading data files: {e}"}
 
     sample_programs = programs[:6]
-    # 🧠 Strict structured system prompt
+  # 🧠 Structured system prompt (multiple options)
     context = f"""
     You are ElevatePath, an AI academic advisor for Miami Dade College.
-    Your task is to produce a structured academic plan in JSON format only.
 
-    Respond EXACTLY in this JSON format:
+    Your task is to recommend **3 distinct possible academic pathways** that align with the user's goals.
+
+    Respond ONLY in valid JSON matching this schema:
+
     {{
-    "career_goal": "string",
-    "pathway_data": {{
-        "mdc_phase": {{
-        "degree_name": "string",
-        "courses": [{{"code": "string", "name": "string", "credits": number}}],
-        "duration_semesters": number,
-        "total_cost": number,
-        "total_credits": number
-        }},
-        "fiu_phase": {{
-        "degree_name": "string",
-        "transfer_credits": number,
-        "required_courses": [{{"code": "string", "name": "string", "credits": number}}],
-        "duration_semesters": number,
-        "total_cost": number,
-        "remaining_credits": number
-        }},
-        "advanced_phase": {{
-        "masters": {{
+    "career_paths": [
+        {{
+        "career_goal": "string",
+        "pathway_data": {{
+            "mdc_phase": {{
             "degree_name": "string",
-            "duration_years": number,
+            "courses": [{{"code": "string", "name": "string", "credits": number}}],
+            "duration_semesters": number,
             "total_cost": number,
             "total_credits": number
-        }},
-        "phd": {{
+            }},
+            "fiu_phase": {{
             "degree_name": "string",
-            "duration_years": number,
-            "funding_available": boolean
+            "transfer_credits": number,
+            "required_courses": [{{"code": "string", "name": "string", "credits": number}}],
+            "duration_semesters": number,
+            "total_cost": number,
+            "remaining_credits": number
+            }},
+            "advanced_phase": {{
+            "masters": {{
+                "degree_name": "string",
+                "duration_years": number,
+                "total_cost": number,
+                "total_credits": number
+            }},
+            "phd": {{
+                "degree_name": "string",
+                "duration_years": number,
+                "funding_available": boolean
+            }}
+            }},
+            "total_summary": {{
+            "total_years": number,
+            "total_cost": number,
+            "career_outlook": "string"
+            }}
         }}
-        }},
-        "total_summary": {{
-        "total_years": number,
-        "total_cost": number,
-        "career_outlook": "string"
         }}
-    }}
+    ]
     }}
 
-    Base your recommendations on this data:
+    Base your recommendations on these data sets:
     - Career Goals: {[g['name'] for g in goals[:8]]}
     - Programs: {[p['name'] for p in sample_programs]}
     - Transfer Pathways: {list(transfer_pathways.get("by_program", {}).keys())[:5]}
@@ -110,11 +116,11 @@ async def invoke_llm(request: Request):
     User input: "{prompt}"
 
     Rules:
-    - Always output valid JSON matching the schema above.
-    - Do NOT include text outside the JSON.
-    - Populate fields with realistic academic data for Miami Dade College → FIU → Graduate progression.
-    - If unsure, make reasonable academic assumptions instead of saying “I’m not sure yet”.
+    - Always produce exactly **3 distinct career paths** in the "career_paths" array.
+    - Use realistic MDC → FIU → Graduate level data.
+    - Do NOT include any explanation text outside of JSON.
     """
+
 
 
     gemini_url = (

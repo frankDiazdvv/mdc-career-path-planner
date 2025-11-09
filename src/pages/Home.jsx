@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { invokeLLM } from "@/api/geminiClient";
 import { Card, CardContent } from "@/components/ui/card";
-import { Sparkles, TrendingUp, Download } from "lucide-react";
+import { Sparkles, TrendingUp, Download, ChevronDown, ChevronUp } from "lucide-react";
 import { motion } from "framer-motion";
-import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import ChatMessage from "../components/chat/ChatMessage";
 import ChatInput from "../components/chat/ChatInput";
@@ -20,17 +19,16 @@ export default function Home() {
     },
   ]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [pathway, setPathway] = useState(null);
+  const [pathways, setPathways] = useState([]);
+  const [expanded, setExpanded] = useState({});
   const messagesEndRef = useRef(null);
-  const pathwayRef = useRef(null);
 
   const scrollToBottom = () =>
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
 
   useEffect(() => {
     scrollToBottom();
-  }, [conversation, pathway]);
+  }, [conversation, pathways]);
 
   const handleSendMessage = async (message) => {
     const newConv = [
@@ -46,33 +44,29 @@ export default function Home() {
 
       let parsedData = null;
 
-      if (typeof response === "string") {
-        try {
-          parsedData = JSON.parse(response);
-        } catch {
-          parsedData = null;
-        }
+      if (response.career_paths && Array.isArray(response.career_paths)) {
+        parsedData = response.career_paths;
       } else if (response.pathway_data) {
-        parsedData = response.pathway_data;
+        parsedData = [response];
       } else if (response.output) {
         try {
-          parsedData =
-            typeof response.output === "string"
-              ? JSON.parse(response.output)
-              : response.output;
+          const parsed = JSON.parse(response.output);
+          parsedData = parsed.career_paths || [parsed];
         } catch {
-          parsedData = null;
+          parsedData = [response.output];
         }
       }
 
-      if (parsedData && typeof parsedData === "object") {
-        setPathway(parsedData);
+      if (parsedData && parsedData.length > 0) {
+        setPathways(parsedData);
         setConversation([
           ...newConv,
           {
             role: "assistant",
             content:
-              "Here’s a personalized academic pathway based on your interests!",
+              parsedData.length > 1
+                ? "Here are several academic pathways you could explore!"
+                : "Here’s a personalized academic pathway based on your interests!",
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -82,9 +76,7 @@ export default function Home() {
           {
             role: "assistant",
             content:
-              response.output && typeof response.output === "string"
-                ? response.output
-                : "I'm not sure yet — could you tell me a bit more?",
+              "I'm not sure yet — could you tell me a bit more about what you’re interested in?",
             timestamp: new Date().toISOString(),
           },
         ]);
@@ -105,82 +97,81 @@ export default function Home() {
     }
   };
 
-  // 🧾 Export Pathway as PDF (stable multi-page version)
-const exportJSONToPDF = () => {
-  if (!pathway) return;
+  // 🧾 Export a single pathway to PDF
+  const exportJSONToPDF = (pathway) => {
+    if (!pathway) return;
 
-  const doc = new jsPDF();
-  let y = 20;
+    const doc = new jsPDF();
+    let y = 20;
 
-  const addLine = (text, bold = false) => {
-    doc.setFont("helvetica", bold ? "bold" : "normal");
-    doc.text(text, 15, y);
-    y += 8;
-    if (y > 270) { doc.addPage(); y = 20; } // simple page break
+    const addLine = (text, bold = false) => {
+      doc.setFont("helvetica", bold ? "bold" : "normal");
+      doc.text(text, 15, y);
+      y += 8;
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+      }
+    };
+
+    addLine("Your Academic Pathway", true);
+
+    const data = pathway.pathway_data || pathway;
+
+    if (data.mdc_phase) {
+      addLine("", true);
+      addLine(`MDC Phase: ${data.mdc_phase.degree_name}`, true);
+      addLine(`Duration: ${data.mdc_phase.duration_semesters} semesters`);
+      addLine(`Total Cost: $${data.mdc_phase.total_cost}`);
+      addLine(`Credits: ${data.mdc_phase.total_credits}`);
+      addLine("Courses:");
+      data.mdc_phase.courses.forEach((c) =>
+        addLine(`  • ${c.code} - ${c.name} (${c.credits} cr)`)
+      );
+    }
+
+    if (data.fiu_phase) {
+      addLine("", true);
+      addLine(`FIU Phase: ${data.fiu_phase.degree_name}`, true);
+      addLine(`Transfer Credits: ${data.fiu_phase.transfer_credits}`);
+      addLine(`Duration: ${data.fiu_phase.duration_semesters} semesters`);
+      addLine(`Total Cost: $${data.fiu_phase.total_cost}`);
+      addLine(`Remaining Credits: ${data.fiu_phase.remaining_credits}`);
+      addLine("Required Courses:");
+      data.fiu_phase.required_courses.forEach((c) =>
+        addLine(`  • ${c.code} - ${c.name} (${c.credits} cr)`)
+      );
+    }
+
+    if (data.advanced_phase) {
+      if (data.advanced_phase.masters) {
+        const m = data.advanced_phase.masters;
+        addLine("", true);
+        addLine(`Masters: ${m.degree_name}`, true);
+        addLine(`Duration: ${m.duration_years} years`);
+        addLine(`Cost: $${m.total_cost}`);
+        addLine(`Credits: ${m.total_credits}`);
+      }
+      if (data.advanced_phase.phd) {
+        const p = data.advanced_phase.phd;
+        addLine("", true);
+        addLine(`PhD: ${p.degree_name}`, true);
+        addLine(`Duration: ${p.duration_years} years`);
+        addLine(`Funding: ${p.funding_available ? "Yes" : "No"}`);
+      }
+    }
+
+    if (data.total_summary) {
+      addLine("", true);
+      addLine("TOTAL SUMMARY", true);
+      addLine(`Years: ${data.total_summary.total_years}`);
+      addLine(`Total Cost: $${data.total_summary.total_cost}`);
+      addLine(`Career Outlook: ${data.total_summary.career_outlook}`);
+    }
+
+    doc.save(`${pathway.career_goal || "My_Pathway"}.pdf`);
   };
 
-  // Title
-  addLine("Your Academic Pathway", true);
-
-  // MDC Phase
-  if (pathway.mdc_phase) {
-    addLine("", true);
-    addLine(`MDC Phase: ${pathway.mdc_phase.degree_name}`, true);
-    addLine(`Duration: ${pathway.mdc_phase.duration_semesters} semesters`);
-    addLine(`Total Cost: $${pathway.mdc_phase.total_cost}`);
-    addLine(`Credits: ${pathway.mdc_phase.total_credits}`);
-    addLine("Courses:");
-    pathway.mdc_phase.courses.forEach(c => {
-      addLine(`  • ${c.code} - ${c.name} (${c.credits} cr)`);
-    });
-  }
-
-  // FIU Phase
-  if (pathway.fiu_phase) {
-    addLine("", true);
-    addLine(`FIU Phase: ${pathway.fiu_phase.degree_name}`, true);
-    addLine(`Transfer Credits: ${pathway.fiu_phase.transfer_credits}`);
-    addLine(`Duration: ${pathway.fiu_phase.duration_semesters} semesters`);
-    addLine(`Total Cost: $${pathway.fiu_phase.total_cost}`);
-    addLine(`Remaining Credits: ${pathway.fiu_phase.remaining_credits}`);
-    addLine("Required Courses:");
-    pathway.fiu_phase.required_courses.forEach(c => {
-      addLine(`  • ${c.code} - ${c.name} (${c.credits} cr)`);
-    });
-  }
-
-  // Advanced Phase
-  if (pathway.advanced_phase) {
-    if (pathway.advanced_phase.masters) {
-      const m = pathway.advanced_phase.masters;
-      addLine("", true);
-      addLine(`Masters: ${m.degree_name}`, true);
-      addLine(`Duration: ${m.duration_years} years`);
-      addLine(`Cost: $${m.total_cost}`);
-      addLine(`Credits: ${m.total_credits}`);
-    }
-
-    if (pathway.advanced_phase.phd) {
-      const p = pathway.advanced_phase.phd;
-      addLine("", true);
-      addLine(`PhD: ${p.degree_name}`, true);
-      addLine(`Duration: ${p.duration_years} years`);
-      addLine(`Funding: ${p.funding_available ? "Yes" : "No"}`);
-    }
-  }
-
-  // Summary
-  if (pathway.total_summary) {
-    addLine("", true);
-    addLine("TOTAL SUMMARY", true);
-    addLine(`Years: ${pathway.total_summary.total_years}`);
-    addLine(`Total Cost: $${pathway.total_summary.total_cost}`);
-    addLine(`Career Outlook: ${pathway.total_summary.career_outlook}`);
-  }
-
-  // Save
-  doc.save("My_Educational_Pathway.pdf");
-};
   return (
     <div className="min-h-screen bg-linear-to-br from-purple-900 via-white to-blue-50">
       <div className="max-w-5xl mx-auto px-4 py-12 md:py-20">
@@ -207,56 +198,7 @@ const exportJSONToPDF = () => {
           </p>
         </motion.div>
 
-        {/* --- FEATURE CARDS --- */}
-        <div className="grid md:grid-cols-2 gap-8 mb-12">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2, duration: 0.6 }}
-          >
-            <Card className="h-full border-slate-200 shadow-lg hover:shadow-xl transition-shadow">
-              <CardContent className="p-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center">
-                    <Sparkles className="w-5 h-5 text-amber-600" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-slate-900">
-                    Conversational AI
-                  </h3>
-                </div>
-                <p className="text-slate-600 leading-relaxed">
-                  Simply chat with our AI advisor about your goals — no forms,
-                  just a natural conversation.
-                </p>
-              </CardContent>
-            </Card>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.3, duration: 0.6 }}
-          >
-            <Card className="h-full border-slate-200 shadow-lg hover:shadow-xl transition-shadow">
-              <CardContent className="p-8">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                    <TrendingUp className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <h3 className="text-lg font-semibold text-slate-900">
-                    Personalized Pathways
-                  </h3>
-                </div>
-                <p className="text-slate-600 leading-relaxed">
-                  Once ready, your pathway will appear automatically — showing
-                  time, cost, and degree milestones.
-                </p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </div>
-
-        {/* --- CHAT BOX --- */}
+        {/* --- CHAT --- */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -302,47 +244,77 @@ const exportJSONToPDF = () => {
           </Card>
         </motion.div>
 
-        {/* --- GENERATED PATHWAY BELOW CHAT --- */}
-        {pathway && (
-          <motion.div
-            ref={pathwayRef}
-            id="pathway-results"
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5, duration: 0.8 }}
-            className="mt-12 space-y-8"
-          >
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-slate-800">
-                Your Personalized Academic Pathway
-              </h2>
-              <button
-                onClick={exportJSONToPDF}
-                disabled={exporting || !pathway}
-                className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                <Download className="w-5 h-5" />
-                {exporting ? "Exporting..." : "Export PDF"}
-              </button>
-            </div>
+        {/* --- MULTIPLE PATHWAYS --- */}
+        {pathways.length > 0 && (
+          <div className="mt-12 space-y-10">
+            {pathways.map((path, i) => {
+              const isOpen = expanded[i];
+              const toggle = () =>
+                setExpanded((prev) => ({ ...prev, [i]: !isOpen }));
 
-            {pathway.mdc_phase && (
-              <PathwayStep phase={pathway.mdc_phase} index={0} totalPhases={3} />
-            )}
-            {pathway.fiu_phase && (
-              <PathwayStep phase={pathway.fiu_phase} index={1} totalPhases={3} />
-            )}
-            {pathway.advanced_phase?.masters && (
-              <PathwayStep
-                phase={pathway.advanced_phase.masters}
-                index={2}
-                totalPhases={3}
-              />
-            )}
-            {pathway.total_summary && (
-              <SummaryCard summary={pathway.total_summary} />
-            )}
-          </motion.div>
+              return (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.3 + i * 0.1, duration: 0.7 }}
+                  className="bg-white border border-slate-200 rounded-2xl shadow-xl p-6"
+                >
+                  <div
+                    className="flex justify-between items-center cursor-pointer mb-4"
+                    onClick={toggle}
+                  >
+                    <h2 className="text-2xl font-bold text-slate-800">
+                      Option {i + 1}: {path.career_goal || "Career Path"}
+                    </h2>
+                    {isOpen ? (
+                      <ChevronUp className="w-6 h-6 text-slate-500" />
+                    ) : (
+                      <ChevronDown className="w-6 h-6 text-slate-500" />
+                    )}
+                  </div>
+
+                  {isOpen && (
+                    <div className="space-y-8">
+                      {path.pathway_data?.mdc_phase && (
+                        <PathwayStep
+                          phase={path.pathway_data.mdc_phase}
+                          index={0}
+                          totalPhases={3}
+                        />
+                      )}
+                      {path.pathway_data?.fiu_phase && (
+                        <PathwayStep
+                          phase={path.pathway_data.fiu_phase}
+                          index={1}
+                          totalPhases={3}
+                        />
+                      )}
+                      {path.pathway_data?.advanced_phase?.masters && (
+                        <PathwayStep
+                          phase={path.pathway_data.advanced_phase.masters}
+                          index={2}
+                          totalPhases={3}
+                        />
+                      )}
+                      {path.pathway_data?.total_summary && (
+                        <SummaryCard summary={path.pathway_data.total_summary} />
+                      )}
+                      <div className="flex justify-end">
+                        <button
+                          onClick={() => exportJSONToPDF(path)}
+                          className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          <Download className="w-5 h-5" />
+                          Export PDF
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              );
+            })}
+          </div>
         )}
       </div>
     </div>
