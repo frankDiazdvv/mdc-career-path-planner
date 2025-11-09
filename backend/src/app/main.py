@@ -11,6 +11,11 @@ from src.app.routes import goals, programs, recommendations
 # Initialize FastAPI app
 app = FastAPI(title="ElevatePath API")
 
+@app.get("/ping")
+def ping():
+    return {"message": "pong"}
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
