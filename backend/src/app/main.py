@@ -11,17 +11,17 @@ from src.app.routes import goals, programs, recommendations
 # Initialize FastAPI app
 app = FastAPI(title="ElevatePath API")
 
-# Allow requests from your frontend (Vite default port)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",  # sometimes Vite runs here
+        "https://mdc-career-path-planner.vercel.app",  # your live frontend
+        "http://localhost:5174",  # local dev if you test locally
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Load Gemini API key
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
